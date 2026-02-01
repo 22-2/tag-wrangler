@@ -11,6 +11,7 @@ import {
 } from "obsidian";
 import { renameTag, findTargets } from "./renaming";
 import { Tag } from "./Tag";
+import { File } from "./File";
 import { around } from "monkey-around";
 import { Confirm, use } from "@ophidian/core";
 
@@ -19,18 +20,18 @@ const tagHoverMain = "tag-wrangler:tag-pane";
 type TagPageSet = Set<TFile> & { tag?: string };
 
 function onElement(
-    el: any,
+    el: HTMLElement | Document,
     event: string,
     selector: string,
     callback: (event: Event, targetEl: HTMLElement) => void,
     options?: AddEventListenerOptions
 ) {
-    el.on(event, selector, callback, options);
-    return () => el.off(event, selector, callback, options);
+    (el as HTMLElement).on(event, selector, callback, options);
+    return () => (el as HTMLElement).off(event, selector, callback, options);
 }
 
 function getTagText(el: HTMLElement, selectors: string) {
-    return (el as any).find?.(selectors)?.textContent ?? el.querySelector(selectors)?.textContent;
+    return el.find?.(selectors)?.textContent ?? el.querySelector(selectors)?.textContent;
 }
 
 export default class TagWrangler extends Plugin {
@@ -64,8 +65,8 @@ export default class TagWrangler extends Plugin {
             const folder = this.app.fileManager.getNewFileParent(
                 this.app.workspace.getActiveFile()?.path || ""
             );
-            const path = (this.app.vault as any).getAvailablePath(
-                (folder as any).getParentPrefix() + baseName,
+            const path = this.app.vault.getAvailablePath(
+                folder.getParentPrefix() + baseName,
                 "md"
             );
             file = await this.app.vault.create(
@@ -96,7 +97,7 @@ export default class TagWrangler extends Plugin {
 
         this.registerEvent(
             app.workspace.on("editor-menu", (menu, editor) => {
-                const token = (editor as any).getClickableTokenAt(editor.getCursor());
+                const token = editor.getClickableTokenAt(editor.getCursor());
                 if (token?.type === "tag") this.setupMenu(menu, token.text);
             })
         );
@@ -107,7 +108,7 @@ export default class TagWrangler extends Plugin {
             })
         );
 
-        (this.app.workspace as any).registerHoverLinkSource(tagHoverMain, {
+        this.app.workspace.registerHoverLinkSource(tagHoverMain, {
             display: "Tags View",
             defaultMod: true,
         });
@@ -188,7 +189,7 @@ export default class TagWrangler extends Plugin {
                 "pointerdown",
                 ".tag-pane-tag",
                 (_, targetEl) => {
-                    (targetEl as any).draggable = "true";
+                    targetEl.draggable = true;
                 },
                 { capture: true }
             )
@@ -205,7 +206,7 @@ export default class TagWrangler extends Plugin {
                     );
                     const dragEvent = event as DragEvent;
                     dragEvent.dataTransfer?.setData("text/plain", "#" + tagName);
-                    (app as any).dragManager.onDragStart(dragEvent, {
+                    app.dragManager.onDragStart(dragEvent, {
                         source: "tag-wrangler",
                         type: "text",
                         title: tagName,
@@ -214,7 +215,7 @@ export default class TagWrangler extends Plugin {
                     window.addEventListener("dragend", release, true);
                     window.addEventListener("drop", release, true);
                     function release() {
-                        (app as any).dragManager.draggable = null;
+                        app.dragManager.draggable = null;
                         window.removeEventListener("dragend", release, true);
                         window.removeEventListener("drop", release, true);
                     }
@@ -226,7 +227,7 @@ export default class TagWrangler extends Plugin {
         const dropHandler = (
             e: DragEvent,
             targetEl: HTMLElement,
-            info = (app as any).dragManager.draggable,
+            info = app.dragManager.draggable,
             drop?: boolean
         ) => {
             if (info?.source !== "tag-wrangler" || e.defaultPrevented) return;
@@ -241,8 +242,8 @@ export default class TagWrangler extends Plugin {
             if (drop) {
                 this.rename(Tag.toName(info.title), dest);
             } else {
-                (app as any).dragManager.updateHover(targetEl, "is-being-dragged-over");
-                (app as any).dragManager.setAction(`Rename to ${dest}`);
+                app.dragManager.updateHover(targetEl, "is-being-dragged-over");
+                app.dragManager.setAction(`Rename to ${dest}`);
             }
         };
 
@@ -258,7 +259,7 @@ export default class TagWrangler extends Plugin {
                     e.currentTarget
                 ) as HTMLElement | null;
                 if (!targetEl) return;
-                const info = (app as any).dragManager.draggable;
+                const info = app.dragManager.draggable;
                 if (info && !e.defaultPrevented) dropHandler(e, targetEl, info, true);
             },
             { capture: true }
@@ -269,7 +270,7 @@ export default class TagWrangler extends Plugin {
         const plugin = this;
 
         this.register(
-            around(metaCache as any, {
+            around(metaCache, {
                 getTags(old) {
                     return function getTags(this: typeof metaCache) {
                         const tags = old.call(this) as Record<string, number>;
@@ -284,22 +285,22 @@ export default class TagWrangler extends Plugin {
         );
 
         this.app.workspace.onLayoutReady(() => {
-            (metaCache as any).getCachedFiles?.().forEach((filename: string) => {
-                const fm = (metaCache as any).getCache?.(filename)?.frontmatter;
+            metaCache.getCachedFiles?.().forEach((filename: string) => {
+                const fm = metaCache.getCache?.(filename)?.frontmatter;
                 if (fm && parseFrontMatterAliases(fm)?.filter(Tag.isTag))
                     this.updatePage(this.app.vault.getAbstractFileByPath(filename) as TFile, fm);
             });
             this.registerEvent(
                 metaCache.on("changed", (file, _data, cache) => this.updatePage(file, cache?.frontmatter))
             );
-            this.registerEvent((metaCache as any).on("delete", (file: TFile) => this.updatePage(file)));
+            this.registerEvent(metaCache.on("delete", (file: TFile) => this.updatePage(file)));
             app.workspace.getLeavesOfType("tag").forEach((leaf) => {
-                (leaf?.view as any)?.requestUpdateTags?.();
+                leaf.view.requestUpdateTags?.();
             });
         });
     }
 
-    updatePage(file: TFile, frontmatter?: Record<string, any>) {
+    updatePage(file: TFile, frontmatter?: Record<string, unknown>) {
         const tags = parseFrontMatterAliases(frontmatter)?.filter(Tag.isTag) || [];
         if (this.pageAliases.has(file)) {
             const oldTags = new Set(tags || []);
@@ -332,17 +333,17 @@ export default class TagWrangler extends Plugin {
     onMenu(e: Event, tagEl: HTMLElement) {
         let menu = menuForEvent(e);
         const tagName = getTagText(tagEl, ".tag-pane-tag-text, .tag-pane-tag .tree-item-inner-text");
-        const isHierarchy = (tagEl.parentElement?.parentElement as any)?.find?.(".collapse-icon");
+        const isHierarchy = tagEl.parentElement?.parentElement?.find?.(".collapse-icon");
         this.setupMenu(menu, tagName ?? "", !!isHierarchy);
         if (isHierarchy) {
             const tagParent = tagName?.split("/").slice(0, -1).join("/") ?? "";
             const tagView = this.leafView(tagEl.matchParent?.(".workspace-leaf"));
             const tagContainer = tagParent
-                ? (tagView as any)?.tagDoms["#" + tagParent.toLowerCase()]
-                : (tagView as any)?.root;
+                ? tagView?.tagDoms?.["#" + tagParent.toLowerCase()]
+                : tagView?.root;
             function toggle(collapse: boolean) {
                 for (const tag of (tagContainer?.children ?? tagContainer?.vChildren?.children ?? []) as HTMLElement[]) {
-                    (tag as any).setCollapsed?.(collapse);
+                    tag.setCollapsed?.(collapse);
                 }
             }
             menu
@@ -400,7 +401,7 @@ export default class TagWrangler extends Plugin {
                 item("tag-random", "dice", "Open random note", async () => {
                     const targets = await findTargets(this.app, new Tag(tagName));
                     if (!targets) return;
-                    random.openRandomNote(targets.map((f: any) => this.app.vault.getAbstractFileByPath(f.filename)));
+                    random.openRandomNote(targets.map((f: File) => this.app.vault.getAbstractFileByPath(f.filename)));
                 })
             );
         }
@@ -414,7 +415,7 @@ export default class TagWrangler extends Plugin {
     }
 
     leafView(containerEl: HTMLElement | null) {
-        let view: any;
+        let view: import("obsidian").View | undefined;
         this.app.workspace.iterateAllLeaves((leaf) => {
             if (leaf.containerEl === containerEl) {
                 view = leaf.view;
@@ -427,27 +428,35 @@ export default class TagWrangler extends Plugin {
     async rename(tagName: string, toName = tagName) {
         try {
             await renameTag(this.app, tagName, toName);
-        } catch (e: any) {
+        } catch (e) {
             console.error(e);
-            new Notice("error: " + e);
+            new Notice("error: " + (e as Error)?.message || String(e));
         }
     }
 }
 
-function item(section: string, icon: string, title: string, click: (evt: Event) => void) {
-    return (i: any) => {
+function item(section: string, icon: string, title: string, click: (evt: MouseEvent | KeyboardEvent) => void) {
+    return (i: import("obsidian").MenuItem) => {
         i.setIcon(icon).setTitle(title).onClick(click);
         if (section) i.setSection(section);
     };
 }
 
+interface UIHandlerOptions {
+    selector: string;
+    container: string;
+    hoverSource: string;
+    toTag: (el: HTMLElement) => string | null;
+    mergeMenu?: boolean;
+}
+
 class TagPageUIHandler extends Component {
     // Handle hovering and clicks-to-open for tag pages
 
-    opts: any;
+    opts: UIHandlerOptions;
     plugin: TagWrangler;
 
-    constructor(plugin: TagWrangler, opts: any) {
+    constructor(plugin: TagWrangler, opts: UIHandlerOptions) {
         super();
         this.opts = opts;
         this.plugin = plugin;
@@ -491,18 +500,21 @@ class TagPageUIHandler extends Component {
                                 showAtPosition(old) {
                                     return function (...args) {
                                         remove();
-                                        self.plugin.setupMenu(this as Menu, toTag(targetEl));
-                                        return old.apply(this, args as any);
+                                        const tagName = toTag(targetEl);
+                                        if (tagName) self.plugin.setupMenu(this as Menu, tagName);
+                                        return old.apply(this, args);
                                     };
                                 },
                             });
-                            if ((Menu as any).forEvent) {
-                                const remove2 = around(Menu as any, {
-                                    forEvent(old: any) {
+                            const menuConstructor = Menu as typeof Menu & { forEvent?(e: Event): Menu };
+                            if (menuConstructor.forEvent) {
+                                const remove2 = around(menuConstructor, {
+                                    forEvent(old) {
                                         return function (ev: Event) {
                                             const m = old.call(this, e) as Menu;
                                             if (ev === e) {
-                                                self.plugin.setupMenu(m, toTag(targetEl));
+                                                const tagName = toTag(targetEl);
+                                                if (tagName) self.plugin.setupMenu(m, tagName);
                                                 remove();
                                             }
                                             remove2();
@@ -515,7 +527,8 @@ class TagPageUIHandler extends Component {
                             setTimeout(remove, 0);
                             return;
                         }
-                        this.plugin.setupMenu(menuForEvent(e), toTag(targetEl));
+                        const tagName = toTag(targetEl);
+                        if (tagName) this.plugin.setupMenu(menuForEvent(e), tagName);
                     },
                     { capture: !!mergeMenu }
                 )
@@ -527,9 +540,10 @@ class TagPageUIHandler extends Component {
                     selector,
                     (event, targetEl) => {
                         const tagName = toTag(targetEl);
+                        if (!tagName) return;
                         const dragEvent = event as DragEvent;
                         dragEvent.dataTransfer?.setData("text/plain", Tag.toTag(tagName));
-                        (app as any).dragManager.onDragStart(dragEvent, {
+                        app.dragManager.onDragStart(dragEvent, {
                             source: "tag-wrangler",
                             type: "text",
                             title: tagName,
@@ -552,7 +566,8 @@ class TagPageUIHandler extends Component {
                     const isMod = !!Keymap.isModEvent(event as MouseEvent);
                     if (!isMod && !altKey) return;
                     const tagName = toTag(targetEl);
-                    const tp = tagName && this.plugin.tagPage(tagName);
+                    if (!tagName) return;
+                    const tp = this.plugin.tagPage(tagName);
                     if (tp) {
                         this.plugin.openTagPage(tp, false, isMod);
                     } else {
@@ -562,7 +577,7 @@ class TagPageUIHandler extends Component {
                             .confirm()
                             .then((v) => {
                                 if (v) return this.plugin.createTagPage(tagName, isMod);
-                                const search = (app as any).internalPlugins?.getPluginById("global-search")?.instance;
+                                const search = app.internalPlugins?.getPluginById("global-search")?.instance;
                                 search?.openGlobalSearch("tag:#" + tagName);
                             });
                     }
@@ -577,12 +592,13 @@ class TagPageUIHandler extends Component {
 }
 
 function menuForEvent(e: Event) {
-    if ((Menu as any).forEvent) {
-        return ((e as any).obsidian_contextmenu ||= (Menu as any).forEvent(e)) as Menu;
+    const menuConstructor = Menu as typeof Menu & { forEvent?(e: Event): Menu };
+    if (menuConstructor.forEvent) {
+        return (e.obsidian_contextmenu ||= menuConstructor.forEvent(e));
     }
-    let menu = (e as any).obsidian_contextmenu as Menu | undefined;
+    let menu = e.obsidian_contextmenu as Menu | undefined;
     if (!menu) {
-        menu = (e as any).obsidian_contextmenu = new Menu();
+        menu = e.obsidian_contextmenu = new Menu();
         setTimeout(() => menu?.showAtPosition({ x: (e as MouseEvent).pageX, y: (e as MouseEvent).pageY }), 0);
     }
     return menu;
@@ -593,7 +609,7 @@ class TagSuggestModal extends SuggestModal<string> {
         super(app);
     }
     getSuggestions(query: string): string[] {
-        const tags = Object.keys((this.app.metadataCache as any).getTags() ?? {});
+        const tags = Object.keys(this.app.metadataCache.getTags?.() ?? {});
         query = query.toLowerCase();
         return tags.filter((tag) => tag.toLowerCase().includes(query));
     }
