@@ -8,6 +8,7 @@ const validTags = [
     "#💡idea",
     "#タグ/🤖/mix",
     "#a_b-c",
+    "#🇯🇵",
 ];
 
 const invalidTags = [
@@ -21,6 +22,11 @@ const invalidTags = [
     "#bad\\slash",
     "#bad\nnewline",
     "#",
+    "#👩‍💻",
+    "#👨🏽‍🔧",
+    "#👩‍👩‍👧‍👦",
+    "#🏳️‍🌈",
+    "#🧑‍🚀/mission",
 ];
 
 describe("Tag.isTag edge cases", () => {
@@ -42,6 +48,18 @@ describe("Replacement with emoji tags", () => {
         const replace = new Replacement(new Tag("🤖"), new Tag("🧠"));
         const out = replace.inArray(["#🤖", "#🤖/sub", "#keep"]);
         expect(out).toEqual(["#🧠", "#🧠/sub", "#keep"]);
+    });
+
+    it("replaces ZWJ emoji tags", () => {
+        const replace = new Replacement(new Tag("👩‍💻"), new Tag("🧑‍🚀"));
+        const out = replace.inArray(["#👩‍💻", "#👩‍💻/dev", "#keep"]);
+        expect(out).toEqual(["#🧑‍🚀", "#🧑‍🚀/dev", "#keep"]);
+    });
+
+    it("replaces flag emoji tags", () => {
+        const replace = new Replacement(new Tag("🇯🇵"), new Tag("🇺🇸"));
+        const out = replace.inArray(["#🇯🇵", "#🇯🇵/travel", "#keep"]);
+        expect(out).toEqual(["#🇺🇸", "#🇺🇸/travel", "#keep"]);
     });
 
     it("replaces emoji names without # in frontmatter arrays", () => {
