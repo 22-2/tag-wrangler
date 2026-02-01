@@ -5,7 +5,9 @@ import {
     Notice,
     parseFrontMatterAliases,
     Plugin,
+    SuggestModal,
     type TFile,
+    type App,
 } from "obsidian";
 import { renameTag, findTargets } from "./renaming";
 import { Tag } from "./Tag";
@@ -82,6 +84,16 @@ export default class TagWrangler extends Plugin {
     }
 
     onload() {
+        this.addCommand({
+            id: "rename-tag",
+            name: "Rename tag",
+            callback: () => {
+                new TagSuggestModal(this.app, (tag) => {
+                    this.rename(Tag.toName(tag));
+                }).open();
+            },
+        });
+
         this.registerEvent(
             app.workspace.on("editor-menu", (menu, editor) => {
                 const token = (editor as any).getClickableTokenAt(editor.getCursor());
@@ -574,4 +586,21 @@ function menuForEvent(e: Event) {
         setTimeout(() => menu?.showAtPosition({ x: (e as MouseEvent).pageX, y: (e as MouseEvent).pageY }), 0);
     }
     return menu;
+}
+
+class TagSuggestModal extends SuggestModal<string> {
+    constructor(app: App, private onSelect: (tag: string) => void) {
+        super(app);
+    }
+    getSuggestions(query: string): string[] {
+        const tags = Object.keys((this.app.metadataCache as any).getTags() ?? {});
+        query = query.toLowerCase();
+        return tags.filter((tag) => tag.toLowerCase().includes(query));
+    }
+    renderSuggestion(tag: string, el: HTMLElement) {
+        el.setText(tag);
+    }
+    onChooseSuggestion(tag: string, _evt: MouseEvent | KeyboardEvent) {
+        this.onSelect(tag);
+    }
 }
